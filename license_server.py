@@ -10,6 +10,12 @@ TEMPLATE_FILE = "protected_template.dyn"
 OUTPUT_FOLDER = "generated_files"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
+def generate_password(machine_id):
+    seed = 12345
+    for char in machine_id:
+        seed += ord(char)
+    return "PWD" + str(seed)
+
 @app.route('/generate', methods=['POST'])
 def generate_license():
     data = request.get_json()

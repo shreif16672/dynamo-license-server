@@ -10,35 +10,39 @@ TEMPLATE_FILE = "protected_template.dyn"
 OUTPUT_FOLDER = "generated_files"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-@app.route("/generate", methods=["POST"])
-def generate_dynamo():
+@app.route('/generate', methods=['POST'])
+def generate_license():
+    data = request.get_json()
+    machine_id = data.get("machine_id")
+
+    if not machine_id:
+        return jsonify({"error": "Missing machine_id"}), 400
+
+    password = generate_password(machine_id)
+
+    # Create timestamped file
+    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    output_file = os.path.join(OUTPUT_DIR, f"licensed_{timestamp}.xlsm")
+
+    shutil.copyfile(TEMPLATE_PATH, output_file)
+
     try:
-        data = request.get_json()
-        mac = data["machine_id"]
-        start_time = data["start_timestamp"]
-        duration = data["duration_seconds"]
+        wb = load_workbook(output_file, keep_vba=True)
 
-        with open(TEMPLATE_FILE, "r", encoding="utf-8") as f:
-            dyn_data = json.load(f)
+        if "LicenseData" not in wb.sheetnames:
+            ws = wb.create_sheet("LicenseData")
+        else:
+            ws = wb["LicenseData"]
 
-        # Replace placeholders in script
-        for node in dyn_data.get("Nodes", []):
-            if "Code" in node and isinstance(node["Code"], str) and "TO_BE_REPLACED" in node["Code"]:
-                node["Code"] = node["Code"].replace("TO_BE_REPLACED", mac, 1)
-                node["Code"] = node["Code"].replace("TO_BE_REPLACED", str(start_time), 1)
-                node["Code"] = node["Code"].replace("TO_BE_REPLACED", str(duration), 1)
-                break
+        ws["A1"] = machine_id
+        ws["A2"] = password
 
-        timestamp_str = datetime.now().strftime("%Y%m%d%H%M%S")
-        output_path = os.path.join(OUTPUT_FOLDER, f"license_{mac}_{timestamp_str}.dyn")
-
-        with open(output_path, "w", encoding="utf-8") as out_file:
-            json.dump(dyn_data, out_file, indent=2)
-
-        return send_file(output_path, as_attachment=True)
+        wb.save(output_file)
+        return send_file(output_file, as_attachment=True)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

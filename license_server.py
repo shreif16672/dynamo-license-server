@@ -1,14 +1,15 @@
 from flask import Flask, request, send_file, jsonify
-import json
-import time
-import os
+from openpyxl import load_workbook
+import os, shutil
 from datetime import datetime
 
 app = Flask(__name__)
 
-TEMPLATE_FILE = "protected_template.dyn"
-OUTPUT_FOLDER = "generated_files"
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+TEMPLATE_PATH = "template.xlsm"
+OUTPUT_DIR = "output"
+
+if not os.path.exists(OUTPUT_DIR):
+    os.makedirs(OUTPUT_DIR)
 
 def generate_password(machine_id):
     seed = 12345

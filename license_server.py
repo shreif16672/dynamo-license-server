@@ -27,7 +27,7 @@ def generate_license():
     password = generate_password(machine_id)
 
     # Create timestamped file
-    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     output_file = os.path.join(OUTPUT_DIR, f"licensed_{timestamp}.xlsm")
 
     shutil.copyfile(TEMPLATE_PATH, output_file)

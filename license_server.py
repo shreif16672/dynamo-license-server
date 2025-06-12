@@ -25,7 +25,7 @@ def save_used_id(machine_id):
     with open(USED_IDS_FILE, "w") as f:
         json.dump(used_ids, f)
 
-# Password generation function (must match VBA logic)
+# Password generation function (MUST match your VBA logic)
 def generate_password(machine_id):
     return str(sum(ord(c) for c in machine_id) * 7 % 100000)
 
@@ -39,8 +39,8 @@ def generate_license():
         return jsonify({"error": "Missing machine ID"}), 400
 
     used_ids = load_used_ids()
-    if machine_id in used_ids:
-        return jsonify({"error": "License already generated for this machine."}), 403
+    if machine_id not in used_ids:
+        save_used_id(machine_id)
 
     if not os.path.exists(TEMPLATE_FILE):
         return jsonify({"error": "Template file not found."}), 500
@@ -58,10 +58,8 @@ def generate_license():
     ws["A2"] = generate_password(machine_id)
     wb.save(output_file)
 
-    save_used_id(machine_id)
-
     return send_file(output_file, as_attachment=True)
 
-# Run locally (for dev or Render)
+# Run locally or on Render
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=10000)

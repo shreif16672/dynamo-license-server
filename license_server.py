@@ -27,7 +27,7 @@ def save_used_id(machine_id):
 
 # Password generation function (MUST match your VBA logic)
 def generate_password(machine_id):
-    return str(sum(ord(c) for c in machine_id) * 7 % 100000)
+    return "PWD" + str(sum(ord(c) for c in machine_id) * 7 % 100000)
 
 # License generation endpoint
 @app.route("/generate", methods=["POST"])

@@ -1,3 +1,4 @@
+# license_server.py
 from flask import Flask, request, send_file, jsonify
 from openpyxl import load_workbook
 import os
@@ -9,30 +10,27 @@ app = Flask(__name__)
 # Constants
 TEMPLATE_FILE = "template.xlsm"
 OUTPUT_DIR = "generated"
+ALLOWED_IDS_FILE = "allowed_ids.json"
 USED_IDS_FILE = "used_ids.json"
 
-# Load used machine IDs
-def load_used_ids():
-    if not os.path.exists(USED_IDS_FILE):
+# ---------------------- Helpers ----------------------
+def load_json(file):
+    if not os.path.exists(file):
         return []
-    with open(USED_IDS_FILE, "r") as f:
+    with open(file, "r") as f:
         return json.load(f)
 
-# Save a used machine ID
-def save_used_id(machine_id):
-    used_ids = load_used_ids()
-    used_ids.append(machine_id)
-    with open(USED_IDS_FILE, "w") as f:
-        json.dump(used_ids, f)
+def save_json(file, data):
+    with open(file, "w") as f:
+        json.dump(data, f)
 
-# Password generation function (MUST match your VBA logic)
 def generate_password(machine_id):
     seed = 12345
-    for char in machine_id:
-        seed += ord(char)
+    for c in machine_id:
+        seed += ord(c)
     return "PWD" + str(seed)
 
-# License generation endpoint
+# ---------------------- License Endpoint ----------------------
 @app.route("/generate", methods=["POST"])
 def generate_license():
     data = request.get_json()
@@ -41,9 +39,18 @@ def generate_license():
     if not machine_id:
         return jsonify({"error": "Missing machine ID"}), 400
 
-    used_ids = load_used_ids()
+    allowed_ids = load_json(ALLOWED_IDS_FILE)
+    used_ids = load_json(USED_IDS_FILE)
+
+    # Automatically allow new machine IDs
+    if machine_id not in allowed_ids:
+        allowed_ids.append(machine_id)
+        save_json(ALLOWED_IDS_FILE, allowed_ids)
+
+    # Save usage (for tracking)
     if machine_id not in used_ids:
-        save_used_id(machine_id)
+        used_ids.append(machine_id)
+        save_json(USED_IDS_FILE, used_ids)
 
     if not os.path.exists(TEMPLATE_FILE):
         return jsonify({"error": "Template file not found."}), 500
@@ -54,7 +61,7 @@ def generate_license():
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     output_file = os.path.join(OUTPUT_DIR, f"QTY_Network_2025_{timestamp}.xlsm")
 
-    # Inject machine ID and password into workbook
+    # Inject license data
     wb = load_workbook(TEMPLATE_FILE, keep_vba=True)
     ws = wb["LicenseData"]
     ws["A1"] = machine_id
@@ -63,6 +70,6 @@ def generate_license():
 
     return send_file(output_file, as_attachment=True)
 
-# Run locally or on Render
+# ---------------------- Run Flask ----------------------
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=10000)

@@ -1,5 +1,3 @@
-# license_server.py
-
 from flask import Flask, request, send_file, jsonify, render_template_string, redirect
 from openpyxl import load_workbook
 import os
@@ -13,19 +11,16 @@ OUTPUT_DIR = "generated"
 ALLOWED_IDS_FILE = "allowed_ids.json"
 PENDING_IDS_FILE = "pending_ids.json"
 
-# Load machine IDs from a JSON file
 def load_ids(file_path):
     if not os.path.exists(file_path):
         return []
     with open(file_path, "r") as f:
         return json.load(f)
 
-# Save machine IDs to a JSON file
 def save_ids(file_path, ids):
     with open(file_path, "w") as f:
         json.dump(ids, f)
 
-# Generate password based on same VBA logic
 def generate_password(machine_id):
     seed = 12345
     for c in machine_id:
@@ -52,15 +47,15 @@ def admin():
     pending = load_ids(PENDING_IDS_FILE)
     allowed = load_ids(ALLOWED_IDS_FILE)
 
-    html = """
+    html = '''
     <html>
     <head><title>License Requests</title></head>
-    <body style='font-family:Arial;'>
+    <body style="font-family:Arial;">
         <h2>Pending Machine ID Requests</h2>
         {% if pending %}
             <ul>
             {% for mid in pending %}
-                <li>{{ mid }} <a href='/approve/{{ mid }}'>✅ Approve</a></li>
+                <li>{{ mid }} <a href="/approve/{{ mid }}">✅ Approve</a></li>
             {% endfor %}
             </ul>
         {% else %}
@@ -68,7 +63,7 @@ def admin():
         {% endif %}
     </body>
     </html>
-    """
+    '''
     return render_template_string(html, pending=pending)
 
 @app.route("/approve/<machine_id>")

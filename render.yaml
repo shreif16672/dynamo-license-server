@@ -1,8 +1,13 @@
+
 services:
   - type: web
-    name: dynamo-license-server
+    name: license-server
     env: python
-    buildCommand: ""
-    startCommand: python license_server.py
     plan: free
-    autoDeploy: false
+    buildCommand: ""
+    startCommand: "python license_server.py"
+    envVars: []
+    autoDeploy: true
+    region: oregon
+    branch: main
+    runtime: python

@@ -1,13 +1,11 @@
-
 services:
   - type: web
-    name: license-server
+    name: dynamo-license-server
     env: python
-    plan: free
-    buildCommand: ""
+    plan: starter
+    buildCommand: "pip install -r requirements.txt"
     startCommand: "python license_server.py"
-    envVars: []
-    autoDeploy: true
-    region: oregon
-    branch: main
-    runtime: python
+    disk:
+      name: data
+      mountPath: /mnt/data
+      sizeGB: 1

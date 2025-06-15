@@ -1,3 +1,5 @@
+# license_server.py (final, disk-enabled version with secure installer download)
+
 from flask import Flask, request, send_file, jsonify, render_template_string, redirect
 import os
 import json
@@ -6,14 +8,15 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# ✅ Disk-based paths for Render
+# ✅ Correct disk-mounted paths (Render Starter Plan with /mnt/data)
 BASE_DIR = "/mnt/data"
 TEMPLATE_FILE = os.path.join(os.path.dirname(__file__), "template.xlsm")
+INSTALLER_FILE = os.path.join(os.path.dirname(__file__), "installer_lifetime.exe")
 ALLOWED_FILE = os.path.join(BASE_DIR, "allowed_ids.json")
 PENDING_FILE = os.path.join(BASE_DIR, "pending_ids.json")
 OUTPUT_DIR = BASE_DIR
 
-# Ensure JSON files exist
+# Utility: Ensure files exist
 for path in [ALLOWED_FILE, PENDING_FILE]:
     if not os.path.exists(path):
         with open(path, "w") as f:
@@ -82,11 +85,7 @@ def admin():
     <h2>Pending Machine ID Requests</h2>
     <ul>
     {% for mid in pending %}
-      <li>
-        {{ mid }} 
-        ✅ <a href='/approve/{{ mid }}'>Approve</a> 
-        ❌ <a href='/reject/{{ mid }}'>Reject</a>
-      </li>
+      <li>{{ mid }} ✅ <a href='/approve/{{ mid }}'>Approve</a> ❌ <a href='/reject/{{ mid }}'>Reject</a></li>
     {% endfor %}
     </ul>
     """
@@ -117,6 +116,19 @@ def reject(machine_id):
         save_ids(PENDING_FILE, pending)
 
     return redirect("/admin")
+
+@app.route("/download")
+def download():
+    machine_id = request.args.get("mid", "").strip().upper()
+    allowed = load_ids(ALLOWED_FILE)
+
+    if machine_id in allowed:
+        if os.path.exists(INSTALLER_FILE):
+            return send_file(INSTALLER_FILE, as_attachment=True)
+        else:
+            return "❌ Installer not found on server.", 404
+    else:
+        return "❌ Access Denied. This machine is not approved.", 403
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=10000)

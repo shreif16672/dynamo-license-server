@@ -1,5 +1,3 @@
-# license_server.py (final, disk-enabled version)
-
 from flask import Flask, request, send_file, jsonify, render_template_string, redirect
 import os
 import json
@@ -8,14 +6,14 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# ✅ Correct disk-mounted paths (Render Starter Plan with /mnt/data)
+# ✅ Disk-based paths for Render
 BASE_DIR = "/mnt/data"
 TEMPLATE_FILE = os.path.join(os.path.dirname(__file__), "template.xlsm")
 ALLOWED_FILE = os.path.join(BASE_DIR, "allowed_ids.json")
 PENDING_FILE = os.path.join(BASE_DIR, "pending_ids.json")
 OUTPUT_DIR = BASE_DIR
 
-# Utility: Ensure files exist
+# Ensure JSON files exist
 for path in [ALLOWED_FILE, PENDING_FILE]:
     if not os.path.exists(path):
         with open(path, "w") as f:
@@ -84,7 +82,11 @@ def admin():
     <h2>Pending Machine ID Requests</h2>
     <ul>
     {% for mid in pending %}
-      <li>{{ mid }} ✅ <a href='/approve/{{ mid }}'>Approve</a></li>
+      <li>
+        {{ mid }} 
+        ✅ <a href='/approve/{{ mid }}'>Approve</a> 
+        ❌ <a href='/reject/{{ mid }}'>Reject</a>
+      </li>
     {% endfor %}
     </ul>
     """
@@ -103,6 +105,17 @@ def approve(machine_id):
 
     save_ids(ALLOWED_FILE, allowed)
     save_ids(PENDING_FILE, pending)
+    return redirect("/admin")
+
+@app.route("/reject/<machine_id>")
+def reject(machine_id):
+    machine_id = machine_id.strip().upper()
+    pending = load_ids(PENDING_FILE)
+
+    if machine_id in pending:
+        pending.remove(machine_id)
+        save_ids(PENDING_FILE, pending)
+
     return redirect("/admin")
 
 if __name__ == "__main__":

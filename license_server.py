@@ -1,134 +1,77 @@
-# license_server.py (final, disk-enabled version with secure installer download)
 
-from flask import Flask, request, send_file, jsonify, render_template_string, redirect
+from flask import Flask, request, jsonify
 import os
 import json
-from openpyxl import load_workbook
-from datetime import datetime
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ✅ Correct disk-mounted paths (Render Starter Plan with /mnt/data)
-BASE_DIR = "/mnt/data"
-TEMPLATE_FILE = os.path.join(os.path.dirname(__file__), "template.xlsm")
-INSTALLER_FILE = os.path.join(os.path.dirname(__file__), "installer_lifetime.exe")
-ALLOWED_FILE = os.path.join(BASE_DIR, "allowed_ids.json")
-PENDING_FILE = os.path.join(BASE_DIR, "pending_ids.json")
-OUTPUT_DIR = BASE_DIR
-
-# Utility: Ensure files exist
-for path in [ALLOWED_FILE, PENDING_FILE]:
-    if not os.path.exists(path):
-        with open(path, "w") as f:
-            json.dump([], f)
-
-def load_ids(path):
-    with open(path, "r") as f:
-        return json.load(f)
-
-def save_ids(path, ids):
-    with open(path, "w") as f:
-        json.dump(ids, f, indent=2)
-
-def generate_password(machine_id):
-    seed = 12345
-    for c in machine_id:
-        seed += ord(c)
-    return f"PWD{seed}"
+def get_file_path(filename):
+    return os.path.join(BASE_DIR, filename)
 
 @app.route("/generate", methods=["POST"])
-def generate():
+def generate_license():
     data = request.get_json()
-    machine_id = data.get("machine_id", "").strip().upper()
-    if not machine_id:
-        return jsonify({"error": "Missing machine ID"}), 400
+    machine_id = data.get("machine_id")
+    duration_hours = data.get("duration_hours")
+    program_id = data.get("program_id", "default")
 
-    allowed = load_ids(ALLOWED_FILE)
-    if machine_id not in allowed:
-        return jsonify({"error": "Machine ID not approved."}), 403
+    if not machine_id or not duration_hours:
+        return "Invalid request", 400
 
-    if not os.path.exists(TEMPLATE_FILE):
-        return jsonify({"error": "Template file not found."}), 500
+    allowed_file = get_file_path(f"PipeNetworkProject/allowed_ids_{program_id}.json")
+    pending_file = get_file_path(f"PipeNetworkProject/pending_ids_{program_id}.json")
 
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    output_file = os.path.join(OUTPUT_DIR, f"QTY_Network_2025_{timestamp}.xlsm")
+    # Load allowed list
+    allowed = {}
+    if os.path.exists(allowed_file):
+        with open(allowed_file, "r") as f:
+            allowed = json.load(f)
 
-    wb = load_workbook(TEMPLATE_FILE, keep_vba=True)
-    ws = wb["LicenseData"]
-    ws["A1"] = machine_id
-    ws["A2"] = generate_password(machine_id)
-    wb.save(output_file)
+    # Check if machine is allowed
+    if machine_id in allowed:
+        hours = int(allowed[machine_id]) if allowed[machine_id] != "lifetime" else 999999
+        expiry = datetime.utcnow() + timedelta(hours=hours)
+        return expiry.strftime("%Y-%m-%d %H:%M:%S")
 
-    return send_file(output_file, as_attachment=True)
+    # Not allowed → add to pending list
+    pending = {}
+    if os.path.exists(pending_file):
+        with open(pending_file, "r") as f:
+            pending = json.load(f)
 
-@app.route("/request", methods=["POST"])
-def request_access():
-    data = request.get_json()
-    machine_id = data.get("machine_id", "").strip().upper()
-    if not machine_id:
-        return jsonify({"error": "Missing machine ID"}), 400
+    pending[machine_id] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with open(pending_file, "w") as f:
+        json.dump(pending, f, indent=2)
 
-    pending = load_ids(PENDING_FILE)
-    allowed = load_ids(ALLOWED_FILE)
-
-    if machine_id in pending or machine_id in allowed:
-        return jsonify({"status": "Already received or approved."})
-
-    pending.append(machine_id)
-    save_ids(PENDING_FILE, pending)
-    return jsonify({"status": "Request received. Waiting for approval."})
+    return "Machine ID pending approval", 403
 
 @app.route("/admin")
-def admin():
-    pending = load_ids(PENDING_FILE)
-    html = """
-    <h2>Pending Machine ID Requests</h2>
-    <ul>
-    {% for mid in pending %}
-      <li>{{ mid }} ✅ <a href='/approve/{{ mid }}'>Approve</a> ❌ <a href='/reject/{{ mid }}'>Reject</a></li>
-    {% endfor %}
-    </ul>
-    """
-    return render_template_string(html, pending=pending)
+def view_all_pending():
+    html = "<h1>Pending Machine ID Requests (All Programs)</h1><ul>"
+    for fname in os.listdir(get_file_path("PipeNetworkProject")):
+        if fname.startswith("pending_ids_") and fname.endswith(".json"):
+            program = fname.replace("pending_ids_", "").replace(".json", "")
+            fpath = get_file_path(f"PipeNetworkProject/{fname}")
+            with open(fpath, "r") as f:
+                data = json.load(f)
+            html += f"<li><strong>{program}</strong>:<ul>"
+            for mid, timestamp in data.items():
+                html += f"<li>{mid} → {timestamp}</li>"
+            html += "</ul></li>"
+    html += "</ul>"
+    return html
 
-@app.route("/approve/<machine_id>")
-def approve(machine_id):
-    machine_id = machine_id.strip().upper()
-    allowed = load_ids(ALLOWED_FILE)
-    pending = load_ids(PENDING_FILE)
-
-    if machine_id not in allowed:
-        allowed.append(machine_id)
-    if machine_id in pending:
-        pending.remove(machine_id)
-
-    save_ids(ALLOWED_FILE, allowed)
-    save_ids(PENDING_FILE, pending)
-    return redirect("/admin")
-
-@app.route("/reject/<machine_id>")
-def reject(machine_id):
-    machine_id = machine_id.strip().upper()
-    pending = load_ids(PENDING_FILE)
-
-    if machine_id in pending:
-        pending.remove(machine_id)
-        save_ids(PENDING_FILE, pending)
-
-    return redirect("/admin")
-
-@app.route("/download")
-def download():
-    machine_id = request.args.get("mid", "").strip().upper()
-    allowed = load_ids(ALLOWED_FILE)
-
-    if machine_id in allowed:
-        if os.path.exists(INSTALLER_FILE):
-            return send_file(INSTALLER_FILE, as_attachment=True)
-        else:
-            return "❌ Installer not found on server.", 404
-    else:
-        return "❌ Access Denied. This machine is not approved.", 403
-
-if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=10000)
+@app.route("/admin/<program_id>")
+def view_program_pending(program_id):
+    file_path = get_file_path(f"PipeNetworkProject/pending_ids_{program_id}.json")
+    if not os.path.exists(file_path):
+        return f"No pending requests for {program_id}", 404
+    with open(file_path, "r") as f:
+        data = json.load(f)
+    html = f"<h1>Pending Requests for {program_id}</h1><ul>"
+    for mid, timestamp in data.items():
+        html += f"<li>{mid} → {timestamp}</li>"
+    html += "</ul>"
+    return html

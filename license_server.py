@@ -2,7 +2,7 @@
 from flask import Flask, request, jsonify
 import os
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
 app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -14,10 +14,9 @@ def get_file_path(filename):
 def generate_license():
     data = request.get_json()
     machine_id = data.get("machine_id")
-    duration_hours = data.get("duration_hours")
     program_id = data.get("program_id", "default")
 
-    if not machine_id or not duration_hours:
+    if not machine_id or not program_id:
         return "Invalid request", 400
 
     allowed_file = get_file_path(f"PipeNetworkProject/allowed_ids_{program_id}.json")
@@ -29,13 +28,10 @@ def generate_license():
         with open(allowed_file, "r") as f:
             allowed = json.load(f)
 
-    # Check if machine is allowed
     if machine_id in allowed:
-        hours = int(allowed[machine_id]) if allowed[machine_id] != "lifetime" else 999999
-        expiry = datetime.utcnow() + timedelta(hours=hours)
-        return expiry.strftime("%Y-%m-%d %H:%M:%S")
+        return "VALID"
 
-    # Not allowed → add to pending list
+    # Not allowed → Add to pending
     pending = {}
     if os.path.exists(pending_file):
         with open(pending_file, "r") as f:

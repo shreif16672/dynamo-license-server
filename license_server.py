@@ -22,7 +22,6 @@ def generate_license():
     allowed_file = get_file_path(f"PipeNetworkProject/allowed_ids_{program_id}.json")
     pending_file = get_file_path(f"PipeNetworkProject/pending_ids_{program_id}.json")
 
-    # Load allowed list
     allowed = {}
     if os.path.exists(allowed_file):
         with open(allowed_file, "r") as f:
@@ -31,7 +30,6 @@ def generate_license():
     if machine_id in allowed:
         return "VALID"
 
-    # Not allowed → Add to pending
     pending = {}
     if os.path.exists(pending_file):
         with open(pending_file, "r") as f:
@@ -71,3 +69,7 @@ def view_program_pending(program_id):
         html += f"<li>{mid} → {timestamp}</li>"
     html += "</ul>"
     return html
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)

@@ -1,34 +1,40 @@
-import json
-import hashlib
 import os
+import json
+import uuid
+import hashlib
+import requests
 
-# === CONFIGURATION ===
-machine_id = "BUYER_ID_HERE"  # Replace with actual buyer machine ID
+# === SETTINGS ===
 program_id = "pipe_network"
-expiry = None  # Use None for lifetime license
+SERVER_URL = "https://dynamo-license-server.onrender.com/validate"
 
-# === SIGNATURE GENERATION ===
-def generate_signature(machine_id, program_id, expiry):
-    raw = f"{machine_id}|{program_id}|{expiry if expiry else 'lifetime'}"
-    return hashlib.sha256(raw.encode()).hexdigest()
+# === Detect Machine ID ===
+def get_machine_id():
+    return hex(uuid.getnode()).replace("0x", "").upper()
 
-signature = generate_signature(machine_id, program_id, expiry)
+machine_id = get_machine_id()
 
-# === LICENSE DATA STRUCTURE ===
-license_data = {
+# === Send to server ===
+payload = {
     "machine_id": machine_id,
-    "program_id": program_id,
-    "expiry": expiry,
-    "signature": signature
+    "program_id": program_id
 }
 
-# === OUTPUT FILE LOCATION ===
-license_dir = os.path.join(os.environ["APPDATA"], "DynamoLicense")
-os.makedirs(license_dir, exist_ok=True)
-license_path = os.path.join(license_dir, "license.txt")
+try:
+    response = requests.post(SERVER_URL, json=payload)
+    if response.status_code == 200:
+        license_data = response.json()
 
-# === WRITE TO FILE ===
-with open(license_path, "w") as f:
-    json.dump(license_data, f, indent=2)
+        # === Write license file to standard location ===
+        license_dir = os.path.join(os.environ["APPDATA"], "DynamoLicense")
+        os.makedirs(license_dir, exist_ok=True)
+        license_path = os.path.join(license_dir, "license.txt")
 
-print(f"✅ License written to: {license_path}")
+        with open(license_path, "w") as f:
+            json.dump(license_data, f, indent=2)
+
+        print(f"✅ License saved to: {license_path}")
+    else:
+        print(f"❌ License request rejected: {response.text}")
+except Exception as e:
+    print(f"❌ License server unreachable: {e}")

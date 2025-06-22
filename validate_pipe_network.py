@@ -1,24 +1,19 @@
-from flask import Flask, request, jsonify, abort
 
-app = Flask(__name__)
+import json
+import hashlib
+import hmac
 
-@app.route("/validate", methods=["POST"])
-def validate_license():
-    data = request.get_json()
-    mid = data.get("machine_id")
-    pid = data.get("program_id")
+SECRET_KEY = b"super_secret_key_used_for_signing"
 
-    with open("allowed_ids_pipe_network.json") as f:
-        allowed = json.load(f)
+def is_license_valid(license_path):
+    try:
+        with open(license_path, "r") as f:
+            data = json.load(f)
 
-    if mid in allowed and allowed[mid] == pid:
-        # Return a secure license payload
-        license_json = {...}
-        return jsonify(license_json), 200
-    else:
-        return abort(403, "Unauthorized")
+        payload = f"{data['machine_id']}|{data['program_id']}|{data['expiry']}"
+        signature = hmac.new(SECRET_KEY, payload.encode(), hashlib.sha256).hexdigest()
 
-# Other routes...
-
-if __name__ == "__main__":
-    app.run()
+        return signature == data.get("signature")
+    except Exception as e:
+        print("❌ License validation error:", str(e))
+        return False

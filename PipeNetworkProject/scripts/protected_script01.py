@@ -1,60 +1,55 @@
 import os
 import json
-import sys
 
-# License check
-def get_license_path():
-    return os.path.join(os.getenv("APPDATA"), "DynamoLicense", "license.txt")
+def clean(text):
+    return text.replace("\\P", "\n").replace("{", "").replace("}", "").strip()
 
-def is_license_valid():
-    expected = "LICENSE-VALID-1234567890"
-    lp = get_license_path()
-    if not os.path.exists(lp):
-        print("❌ License file not found.")
-        return False
-    return open(lp).read().strip() == expected
+def parse_item(line):
+    item = {}
+    parts = line.split("\\n")
+    for part in parts:
+        if "MH" in part:
+            item["Name"] = part.strip()
+        elif "CL" in part:
+            item["CL"] = float(part.replace("CL=", "").strip())
+        elif "IL" in part:
+            item["IL"] = float(part.replace("IL=", "").strip())
+        elif part.strip().startswith("E="):
+            item["E"] = float(part.replace("E=", "").strip())
+        elif part.strip().startswith("N="):
+            item["N"] = float(part.replace("N=", "").strip())
+    return item
 
-if not is_license_valid():
-    print("⛔ Invalid or missing license.")
-    exit(1)
-
-# --- Resolve dynamic project path ---
-current_dir = os.path.dirname(sys.argv[0])  # Folder where the EXE is located
-input_folder = os.path.join(current_dir, "input")
-config_file = os.path.join(input_folder, "project_path.txt")
-
-# Create input folder and project_path.txt if not found
-os.makedirs(input_folder, exist_ok=True)
-if not os.path.exists(config_file):
-    with open(config_file, "w") as f:
-        f.write(current_dir)
-    print(f"ℹ️ Created project_path.txt with: {current_dir}")
-
-# Read the path from config
-with open(config_file, "r") as f:
+# Load dynamic project path
+conf_path = os.path.join("input", "project_path.txt")
+with open(conf_path, "r") as f:
     project_path = f.read().strip()
 
-# --- Load mtext_data.json ---
+# Load MText data
 mtext_path = os.path.join(project_path, "input", "mtext_data.json")
-grouped_path = os.path.join(project_path, "input", "grouped_data.json")
-
-if not os.path.exists(mtext_path):
-    print("❌ mtext_data.json not found.")
-    exit(1)
-
 with open(mtext_path, "r") as f:
-    data = json.load(f)
+    mtext_objects = json.load(f)
 
-# Example processing: convert each entry to grouped structure
-grouped = []
-for entry in data:
-    grouped.append({
-        "Name": entry.get("Contents", ""),
-        "E": entry["Location"]["X"],
-        "N": entry["Location"]["Y"]
-    })
+parsed = []
+for m in mtext_objects:
+    location = m["location"]
+    text = m["text"]
+    lines = clean(text).split("\n")
+    data = parse_item("\n".join(lines))
+    if "Name" in data:
+        data["X"] = location[0]
+        data["Y"] = location[1]
+        parsed.append(data)
 
-with open(grouped_path, "w") as f:
+# Output grouped by base name
+grouped = {}
+for item in parsed:
+    base = item["Name"].split("-")[0]
+    if base not in grouped:
+        grouped[base] = []
+    grouped[base].append(item)
+
+# Save result
+output_path = os.path.join(project_path, "output", "first_names.json")
+with open(output_path, "w") as f:
     json.dump(grouped, f, indent=2)
-
-print("✅ grouped_data.json created successfully.")

@@ -1,7 +1,5 @@
 from flask import Flask, request, jsonify, render_template_string, redirect, url_for
-import os
-import json
-import hashlib
+import os, json, hashlib
 from datetime import datetime
 
 app = Flask(__name__)
@@ -57,8 +55,46 @@ def generate_license():
 
     return "Machine ID pending approval", 403
 
-# (Keep /admin/<program_id> and /admin-panel as-is)
-# ...
+@app.route("/validate_pipe_network", methods=["POST"])
+def validate_pipe_network():
+    data = request.get_json()
+    machine_id = data.get("machine_id")
+    program_id = "pipe_network"
+    signature = data.get("signature")
+    expiry = data.get("expiry")
+
+    expected = {
+        "machine_id": machine_id,
+        "program_id": program_id,
+        "expiry": expiry
+    }
+    expected_signature = create_signature(expected)
+
+    if signature != expected_signature:
+        return "Invalid license", 403
+
+    # Optional: check expiry
+    if expiry is not None and expiry < datetime.utcnow().isoformat():
+        return "License expired", 403
+
+    return "VALID", 200
+
+@app.route("/admin/pipe_network")
+def admin_pipe_network():
+    pending_file = get_file_path("PipeNetworkProject/pending_ids_pipe_network.json")
+    allowed_file = get_file_path("PipeNetworkProject/allowed_ids_pipe_network.json")
+
+    pending = load_json(pending_file)
+    allowed = load_json(allowed_file)
+
+    html = "<h1>Pipe Network License Requests</h1><h2>Pending</h2><ul>"
+    for mid, time in pending.items():
+        html += f"<li>{mid} — {time}</li>"
+    html += "</ul><h2>Approved</h2><ul>"
+    for mid, exp in allowed.items():
+        html += f"<li>{mid} — {exp}</li>"
+    html += "</ul>"
+    return html
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

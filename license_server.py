@@ -7,18 +7,18 @@ from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-BASE_DIR = os.path.join(os.path.dirname(__file__), "PipeNetworkProject")
-if not os.path.exists(BASE_DIR):
-    os.makedirs(BASE_DIR)
+# Folder structure
+BASE_DIR = os.path.dirname(__file__)
+PIPE_DIR = os.path.join(BASE_DIR, "PipeNetworkProject")
 
 PROGRAM_CONFIGS = {
     "pipe_network": {
-        "pending_file": os.path.join(BASE_DIR, "pending_ids_pipe_network.json"),
-        "allowed_file": os.path.join(BASE_DIR, "allowed_ids_pipe_network.json"),
+        "pending_file": os.path.join(PIPE_DIR, "pending_ids_pipe_network.json"),
+        "allowed_file": os.path.join(PIPE_DIR, "allowed_ids_pipe_network.json"),
     },
     "xlsm_tool": {
-        "pending_file": "pending_ids_xlsm_tool.json",
-        "allowed_file": "allowed_ids_xlsm_tool.json",
+        "pending_file": os.path.join(BASE_DIR, "pending_ids_xlsm_tool.json"),
+        "allowed_file": os.path.join(BASE_DIR, "allowed_ids_xlsm_tool.json"),
     }
 }
 
@@ -68,16 +68,22 @@ def generate():
     save_json(config["pending_file"], pending)
     return "Request submitted and pending approval.", 202
 
-@app.route("/validate_pipe_network", methods=["POST"])
-def validate_pipe_network():
+@app.route("/validate", methods=["POST"])
+def validate():
     data = request.json
     machine_id = data.get("machine_id")
-    program_id = "pipe_network"
+    program_id = data.get("program_id")
 
-    config = PROGRAM_CONFIGS[program_id]
+    if not machine_id or not program_id:
+        return jsonify({"valid": False, "reason": "Missing fields"}), 400
+
+    config = PROGRAM_CONFIGS.get(program_id)
+    if not config:
+        return jsonify({"valid": False, "reason": "Invalid program_id"}), 400
+
     allowed = load_json(config["allowed_file"])
-
     record = allowed.get(machine_id)
+
     if not record:
         return jsonify({"valid": False, "reason": "Not allowed"}), 403
 

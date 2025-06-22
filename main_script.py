@@ -7,7 +7,7 @@ import validate_pipe_network
 
 LICENSE_DIR = os.path.join(os.path.expanduser("~"), "C_Dynamo_Protect", "PipeNetworkProject")
 LICENSE_PATH = os.path.join(LICENSE_DIR, "license.txt")
-SERVER_URL = "https://dynamo-license-server.onrender.com/validate"
+SERVER_URL = "https://dynamo-license-server.onrender.com/validate_pipe_network"
 PROGRAM_ID = "pipe_network"
 
 def get_machine_id():

@@ -84,4 +84,4 @@ def admin_pipe_network():
     return render_template_string(html, pending=pending, allowed=allowed)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=10000, debug=True)

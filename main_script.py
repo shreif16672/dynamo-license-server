@@ -1,40 +1,50 @@
+
 import os
 import json
-import uuid
 import hashlib
 import requests
+import validate_pipe_network
 
-# === SETTINGS ===
-program_id = "pipe_network"
+LICENSE_DIR = os.path.join(os.path.expanduser("~"), "C_Dynamo_Protect", "PipeNetworkProject")
+LICENSE_PATH = os.path.join(LICENSE_DIR, "license.txt")
 SERVER_URL = "https://dynamo-license-server.onrender.com/validate"
+PROGRAM_ID = "pipe_network"
 
-# === Detect Machine ID ===
 def get_machine_id():
-    return hex(uuid.getnode()).replace("0x", "").upper()
+    return hashlib.sha256(os.environ.get('COMPUTERNAME', 'UNKNOWN').encode()).hexdigest()
 
-machine_id = get_machine_id()
+def request_license():
+    machine_id = get_machine_id()
+    data = {
+        "machine_id": machine_id,
+        "program_id": PROGRAM_ID
+    }
+    try:
+        response = requests.post(SERVER_URL, json=data)
+        print("📡 License request sent to server.")
+        if response.status_code == 200:
+            with open(LICENSE_PATH, "w") as f:
+                f.write(response.text)
+            print("✅ License file saved.")
+        else:
+            print("❌ Server rejected the request:", response.text)
+    except Exception as e:
+        print("❌ Failed to contact server:", str(e))
 
-# === Send to server ===
-payload = {
-    "machine_id": machine_id,
-    "program_id": program_id
-}
+def main():
+    os.makedirs(LICENSE_DIR, exist_ok=True)
+    if not os.path.exists(LICENSE_PATH):
+        print("🔒 No license file found. Sending request...")
+        request_license()
+        return
 
-try:
-    response = requests.post(SERVER_URL, json=payload)
-    if response.status_code == 200:
-        license_data = response.json()
+    if not validate_pipe_network.is_license_valid(LICENSE_PATH):
+        print("🔒 Invalid license. Re-requesting...")
+        request_license()
+        return
 
-        # === Write license file to standard location ===
-        license_dir = os.path.join(os.environ["APPDATA"], "DynamoLicense")
-        os.makedirs(license_dir, exist_ok=True)
-        license_path = os.path.join(license_dir, "license.txt")
+    print("✅ License valid. Running protected script...")
+    # (Here you can place the call to your protected logic or EXE)
 
-        with open(license_path, "w") as f:
-            json.dump(license_data, f, indent=2)
-
-        print(f"✅ License saved to: {license_path}")
-    else:
-        print(f"❌ License request rejected: {response.text}")
-except Exception as e:
-    print(f"❌ License server unreachable: {e}")
+if __name__ == "__main__":
+    main()

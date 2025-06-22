@@ -94,7 +94,7 @@ def validate():
 
     return jsonify({"valid": True})
 
-@app.route("/admin/<program_id>")
+@app.route("/admin/<program_id>", methods=["GET", "POST"])
 def admin_view(program_id):
     config = PROGRAM_CONFIGS.get(program_id)
     if not config:
@@ -103,13 +103,40 @@ def admin_view(program_id):
     pending = load_json(config["pending_file"])
     allowed = load_json(config["allowed_file"])
 
+    if request.method == "POST":
+        machine_id = request.form.get("machine_id")
+        action = request.form.get("action")
+
+        if machine_id in pending:
+            if action == "approve":
+                duration = pending[machine_id].get("duration")
+                expiry = None
+                if duration:
+                    expiry = (datetime.utcnow() + timedelta(hours=int(duration))).isoformat()
+                allowed[machine_id] = {
+                    "program_id": program_id,
+                    "expiry": expiry
+                }
+                del pending[machine_id]
+                save_json(config["allowed_file"], allowed)
+                save_json(config["pending_file"], pending)
+            elif action == "reject":
+                del pending[machine_id]
+                save_json(config["pending_file"], pending)
+
+    # Rebuild HTML
     html = f"<h1>{program_id.replace('_', ' ').title()} License Requests</h1>"
+
     html += "<h2>Pending</h2>"
     if pending:
-        html += "<ul>"
+        html += "<form method='POST'>"
         for mid in pending:
-            html += f"<li>{mid}</li>"
-        html += "</ul>"
+            html += f"<p>{mid} "
+            html += f"<button name='action' value='approve'>Approve</button> "
+            html += f"<button name='action' value='reject'>Reject</button> "
+            html += f"<input type='hidden' name='machine_id' value='{mid}'>"
+            html += "</p>"
+        html += "</form>"
     else:
         html += "<p>No pending requests.</p>"
 

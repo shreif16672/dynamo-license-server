@@ -17,6 +17,7 @@ def load_json(path):
     return {}
 
 def save_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
 
@@ -36,9 +37,35 @@ def generate_license():
         return "VALID"
 
     pending = load_json(pending_file)
-    pending[machine_id] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    save_json(pending_file, pending)
+    if machine_id not in pending:
+        pending[machine_id] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        save_json(pending_file, pending)
+
     return "Machine ID pending approval", 403
+
+@app.route("/admin/<program_id>", methods=["GET"])
+def view_pending_program(program_id):
+    pending_file = get_file_path(f"PipeNetworkProject/pending_ids_{program_id}.json")
+    pending = load_json(pending_file)
+    if not pending:
+        return f"<h2>No pending IDs for <b>{program_id}</b></h2>"
+
+    html = f"<h2>Pending IDs for <b>{program_id}</b></h2><ul>"
+    for mid, ts in pending.items():
+        html += f"""
+<li>
+    {mid} → {ts}
+    <form method="POST" action="/admin-panel" style="display:inline;">
+        <input type="hidden" name="password" value="{ADMIN_PASSWORD}">
+        <input type="hidden" name="program_id" value="{program_id}">
+        <input type="hidden" name="machine_id" value="{mid}">
+        <button name="action" value="approve">Approve</button>
+        <button name="action" value="reject">Reject</button>
+    </form>
+</li>
+"""
+    html += "</ul>"
+    return html
 
 @app.route("/admin-panel", methods=["GET", "POST"])
 def admin_panel():
@@ -60,26 +87,25 @@ def admin_panel():
         if action == "approve":
             allowed[machine_id] = datetime.utcnow().strftime("%Y-%m-%d")
             pending.pop(machine_id, None)
-            save_json(pending_path, pending)
-            save_json(allowed_path, allowed)
         elif action == "reject":
             pending.pop(machine_id, None)
-            save_json(pending_path, pending)
 
-        return redirect(url_for('admin_panel'))
+        save_json(pending_path, pending)
+        save_json(allowed_path, allowed)
+        return redirect(url_for("admin_panel"))
 
     table_html = ""
-    for fname in os.listdir(get_file_path("PipeNetworkProject")):
+    subdir = get_file_path("PipeNetworkProject")
+    for fname in os.listdir(subdir):
         if fname.startswith("pending_ids_") and fname.endswith(".json"):
             program = fname.replace("pending_ids_", "").replace(".json", "")
-            fpath = get_file_path(f"PipeNetworkProject/{fname}")
-            pending = load_json(fpath)
+            pending = load_json(os.path.join(subdir, fname))
             if pending:
                 table_html += f"<h3>{program}</h3><ul>"
                 for mid, timestamp in pending.items():
                     table_html += f"""
 <li>
-    {mid} -> {timestamp}
+    {mid} → {timestamp}
     <form method="POST" style="display:inline;">
         <input type="hidden" name="password" value="{ADMIN_PASSWORD}">
         <input type="hidden" name="machine_id" value="{mid}">

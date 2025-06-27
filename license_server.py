@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, render_template_string, send_file
 import os
 import json
+from datetime import datetime
 import shutil
 
 app = Flask(__name__)
@@ -12,23 +13,30 @@ TEMPLATE_FILE = "template.xlsm"
 
 def read_json(filename):
     if not os.path.exists(filename):
+        print(f"[INFO] JSON file '{filename}' not found, returning empty dictionary.")
         return {}
     with open(filename, "r") as f:
         try:
-            return json.load(f)
+            data = json.load(f)
+            print(f"[INFO] Loaded JSON from '{filename}': {list(data.keys())}")
+            return data
         except json.JSONDecodeError:
+            print(f"[ERROR] Failed to parse JSON in '{filename}', returning empty dictionary.")
             return {}
 
 def write_json(filename, data):
     with open(filename, "w") as f:
         json.dump(data, f, indent=2)
+    print(f"[INFO] Wrote {len(data)} entries to '{filename}'.")
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    data = request.get_json(force=True)
+    data = request.json
     machine_id = data.get("machine_id")
     program_id = data.get("program_id")
     duration = data.get("duration", "lifetime")
+
+    print(f"[POST /generate] Received request → Machine ID: {machine_id}, Program ID: {program_id}, Duration: {duration}")
 
     if program_id != PROGRAM_ID:
         return jsonify({"error": "Invalid program ID"}), 400
@@ -39,19 +47,29 @@ def generate():
     if machine_id in allowed:
         filename = f"QTY_Network_2025_{machine_id}.xlsm"
         shutil.copy(TEMPLATE_FILE, filename)
+        print(f"[INFO] Machine '{machine_id}' is approved. Sending file: {filename}")
         return send_file(filename, as_attachment=True)
 
     if machine_id not in pending:
-        pending[machine_id] = {"program_id": program_id, "duration": duration}
+        pending[machine_id] = {
+            "program_id": program_id,
+            "duration": duration
+        }
         write_json(PENDING_FILE, pending)
+        print(f"[INFO] Machine '{machine_id}' added to pending list.")
 
-    return jsonify({"status": "pending", "message": "Waiting for approval."}), 202
+    return jsonify({
+        "status": "pending",
+        "message": "Request submitted and waiting for approval."
+    }), 202
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
     if request.method == "POST":
         action = request.form.get("action")
         machine_id = request.form.get("machine_id")
+
+        print(f"[POST /admin] Action: {action}, Machine ID: {machine_id}")
 
         pending = read_json(PENDING_FILE)
         allowed = read_json(ALLOWED_FILE)
@@ -60,9 +78,14 @@ def admin():
             allowed[machine_id] = pending.pop(machine_id)
             write_json(ALLOWED_FILE, allowed)
             write_json(PENDING_FILE, pending)
+            print(f"[ADMIN] Approved '{machine_id}'")
         elif action == "reject" and machine_id in pending:
             pending.pop(machine_id)
             write_json(PENDING_FILE, pending)
+            print(f"[ADMIN] Rejected '{machine_id}'")
+
+    pending = read_json(PENDING_FILE)
+    allowed = read_json(ALLOWED_FILE)
 
     html = """
     <h1>XLSM Tool License Admin</h1>
@@ -95,7 +118,7 @@ def admin():
         <p>No approved machines.</p>
     {% endif %}
     """
-    return render_template_string(html, pending=read_json(PENDING_FILE), approved=read_json(ALLOWED_FILE))
+    return render_template_string(html, pending=pending, approved=allowed)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)

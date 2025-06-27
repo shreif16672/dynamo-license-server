@@ -1,33 +1,34 @@
 from flask import Flask, request, jsonify, render_template_string, send_file
 import os
 import json
-from datetime import datetime
 import shutil
 
 app = Flask(__name__)
 
 PROGRAM_ID = "xlsm_tool"
-PENDING_FILE = "pending_ids_xlsm_tool.json"
-ALLOWED_FILE = "allowed_ids_xlsm_tool.json"
-TEMPLATE_FILE = "template.xlsm"
+BASE_DIR = "/tmp"  # ✅ Writable directory on Render
+PENDING_FILE = os.path.join(BASE_DIR, "pending_ids_xlsm_tool.json")
+ALLOWED_FILE = os.path.join(BASE_DIR, "allowed_ids_xlsm_tool.json")
+TEMPLATE_FILE = "template.xlsm"  # This must still exist in project root
 
-def read_json(filename):
-    if not os.path.exists(filename):
-        print(f"[INFO] JSON file '{filename}' not found, returning empty dictionary.")
+def read_json(filepath):
+    if not os.path.exists(filepath):
+        print(f"[INFO] File {filepath} not found. Returning empty dict.")
         return {}
-    with open(filename, "r") as f:
-        try:
-            data = json.load(f)
-            print(f"[INFO] Loaded JSON from '{filename}': {list(data.keys())}")
-            return data
-        except json.JSONDecodeError:
-            print(f"[ERROR] Failed to parse JSON in '{filename}', returning empty dictionary.")
-            return {}
+    try:
+        with open(filepath, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[ERROR] Failed to read {filepath}: {e}")
+        return {}
 
-def write_json(filename, data):
-    with open(filename, "w") as f:
-        json.dump(data, f, indent=2)
-    print(f"[INFO] Wrote {len(data)} entries to '{filename}'.")
+def write_json(filepath, data):
+    try:
+        with open(filepath, "w") as f:
+            json.dump(data, f, indent=2)
+        print(f"[INFO] Wrote {len(data)} items to {filepath}")
+    except Exception as e:
+        print(f"[ERROR] Failed to write {filepath}: {e}")
 
 @app.route("/generate", methods=["POST"])
 def generate():
@@ -36,7 +37,7 @@ def generate():
     program_id = data.get("program_id")
     duration = data.get("duration", "lifetime")
 
-    print(f"[POST /generate] Received request → Machine ID: {machine_id}, Program ID: {program_id}, Duration: {duration}")
+    print(f"[POST /generate] machine_id={machine_id}, program_id={program_id}")
 
     if program_id != PROGRAM_ID:
         return jsonify({"error": "Invalid program ID"}), 400
@@ -45,23 +46,17 @@ def generate():
     pending = read_json(PENDING_FILE)
 
     if machine_id in allowed:
-        filename = f"QTY_Network_2025_{machine_id}.xlsm"
-        shutil.copy(TEMPLATE_FILE, filename)
-        print(f"[INFO] Machine '{machine_id}' is approved. Sending file: {filename}")
-        return send_file(filename, as_attachment=True)
+        out_file = os.path.join(BASE_DIR, f"QTY_Network_2025_{machine_id}.xlsm")
+        shutil.copy(TEMPLATE_FILE, out_file)
+        print(f"[INFO] Sending licensed file to {machine_id}")
+        return send_file(out_file, as_attachment=True)
 
     if machine_id not in pending:
-        pending[machine_id] = {
-            "program_id": program_id,
-            "duration": duration
-        }
+        pending[machine_id] = {"program_id": program_id, "duration": duration}
         write_json(PENDING_FILE, pending)
-        print(f"[INFO] Machine '{machine_id}' added to pending list.")
+        print(f"[INFO] Added {machine_id} to pending list.")
 
-    return jsonify({
-        "status": "pending",
-        "message": "Request submitted and waiting for approval."
-    }), 202
+    return jsonify({"status": "pending", "message": "Waiting for admin approval."}), 202
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
@@ -69,7 +64,7 @@ def admin():
         action = request.form.get("action")
         machine_id = request.form.get("machine_id")
 
-        print(f"[POST /admin] Action: {action}, Machine ID: {machine_id}")
+        print(f"[ADMIN] Action={action}, machine_id={machine_id}")
 
         pending = read_json(PENDING_FILE)
         allowed = read_json(ALLOWED_FILE)
@@ -78,11 +73,9 @@ def admin():
             allowed[machine_id] = pending.pop(machine_id)
             write_json(ALLOWED_FILE, allowed)
             write_json(PENDING_FILE, pending)
-            print(f"[ADMIN] Approved '{machine_id}'")
         elif action == "reject" and machine_id in pending:
             pending.pop(machine_id)
             write_json(PENDING_FILE, pending)
-            print(f"[ADMIN] Rejected '{machine_id}'")
 
     pending = read_json(PENDING_FILE)
     allowed = read_json(ALLOWED_FILE)

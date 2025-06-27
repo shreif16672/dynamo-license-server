@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify, render_template_string, send_file
 import os
 import json
-from datetime import datetime
 import shutil
 
 app = Flask(__name__)
@@ -37,18 +36,16 @@ def generate():
     allowed = read_json(ALLOWED_FILE)
     pending = read_json(PENDING_FILE)
 
-    # If machine ID is approved, return the file
     if machine_id in allowed:
-        output_filename = f"QTY_Network_2025_{machine_id}.xlsm"
-        shutil.copy(TEMPLATE_FILE, output_filename)
-        return send_file(output_filename, as_attachment=True)
+        filename = f"QTY_Network_2025_{machine_id}.xlsm"
+        shutil.copy(TEMPLATE_FILE, filename)
+        return send_file(filename, as_attachment=True)
 
-    # If new request, store in pending list
     if machine_id not in pending:
         pending[machine_id] = {"program_id": program_id, "duration": duration}
         write_json(PENDING_FILE, pending)
 
-    return jsonify({"status": "pending", "message": "Request submitted."}), 202
+    return jsonify({"status": "pending", "message": "Waiting for approval."}), 202
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
@@ -67,11 +64,8 @@ def admin():
             pending.pop(machine_id)
             write_json(PENDING_FILE, pending)
 
-    pending = read_json(PENDING_FILE)
-    allowed = read_json(ALLOWED_FILE)
-
     html = """
-    <h1>Xlsm Tool License Requests</h1>
+    <h1>XLSM Tool License Admin</h1>
     <h2>Pending</h2>
     {% if pending %}
         <ul>

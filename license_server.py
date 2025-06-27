@@ -9,26 +9,26 @@ PROGRAM_ID = "xlsm_tool"
 BASE_DIR = "/tmp"  # ✅ Writable directory on Render
 PENDING_FILE = os.path.join(BASE_DIR, "pending_ids_xlsm_tool.json")
 ALLOWED_FILE = os.path.join(BASE_DIR, "allowed_ids_xlsm_tool.json")
-TEMPLATE_FILE = "template.xlsm"  # This must still exist in project root
+TEMPLATE_FILE = "template.xlsm"  # Must be in same folder as this script
 
 def read_json(filepath):
     if not os.path.exists(filepath):
-        print(f"[INFO] File {filepath} not found. Returning empty dict.")
+        print(f"[INFO] File {filepath} not found.")
         return {}
     try:
         with open(filepath, "r") as f:
             return json.load(f)
     except Exception as e:
-        print(f"[ERROR] Failed to read {filepath}: {e}")
+        print(f"[ERROR] reading {filepath}: {e}")
         return {}
 
 def write_json(filepath, data):
     try:
         with open(filepath, "w") as f:
             json.dump(data, f, indent=2)
-        print(f"[INFO] Wrote {len(data)} items to {filepath}")
+        print(f"[INFO] Saved {len(data)} records to {filepath}")
     except Exception as e:
-        print(f"[ERROR] Failed to write {filepath}: {e}")
+        print(f"[ERROR] writing {filepath}: {e}")
 
 @app.route("/generate", methods=["POST"])
 def generate():
@@ -37,7 +37,7 @@ def generate():
     program_id = data.get("program_id")
     duration = data.get("duration", "lifetime")
 
-    print(f"[POST /generate] machine_id={machine_id}, program_id={program_id}")
+    print(f"[GENERATE] Machine: {machine_id}, Program: {program_id}, Duration: {duration}")
 
     if program_id != PROGRAM_ID:
         return jsonify({"error": "Invalid program ID"}), 400
@@ -46,15 +46,18 @@ def generate():
     pending = read_json(PENDING_FILE)
 
     if machine_id in allowed:
-        out_file = os.path.join(BASE_DIR, f"QTY_Network_2025_{machine_id}.xlsm")
-        shutil.copy(TEMPLATE_FILE, out_file)
-        print(f"[INFO] Sending licensed file to {machine_id}")
-        return send_file(out_file, as_attachment=True)
+        licensed_file = os.path.join(BASE_DIR, f"QTY_Network_2025_{machine_id}.xlsm")
+        shutil.copy(TEMPLATE_FILE, licensed_file)
+        print(f"[INFO] Sending licensed file: {licensed_file}")
+        return send_file(licensed_file, as_attachment=True)
 
     if machine_id not in pending:
-        pending[machine_id] = {"program_id": program_id, "duration": duration}
+        pending[machine_id] = {
+            "program_id": program_id,
+            "duration": duration
+        }
         write_json(PENDING_FILE, pending)
-        print(f"[INFO] Added {machine_id} to pending list.")
+        print(f"[INFO] Added {machine_id} to pending list")
 
     return jsonify({"status": "pending", "message": "Waiting for admin approval."}), 202
 
@@ -63,8 +66,7 @@ def admin():
     if request.method == "POST":
         action = request.form.get("action")
         machine_id = request.form.get("machine_id")
-
-        print(f"[ADMIN] Action={action}, machine_id={machine_id}")
+        print(f"[ADMIN] Action={action}, Machine={machine_id}")
 
         pending = read_json(PENDING_FILE)
         allowed = read_json(ALLOWED_FILE)
@@ -73,9 +75,11 @@ def admin():
             allowed[machine_id] = pending.pop(machine_id)
             write_json(ALLOWED_FILE, allowed)
             write_json(PENDING_FILE, pending)
+            print(f"[ADMIN] Approved {machine_id}")
         elif action == "reject" and machine_id in pending:
             pending.pop(machine_id)
             write_json(PENDING_FILE, pending)
+            print(f"[ADMIN] Rejected {machine_id}")
 
     pending = read_json(PENDING_FILE)
     allowed = read_json(ALLOWED_FILE)

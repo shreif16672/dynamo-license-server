@@ -1,104 +1,78 @@
 from flask import Flask, request, jsonify, render_template_string, send_file
 import os
 import json
-from datetime import datetime, timedelta
-import hashlib
-import hmac
+from datetime import datetime
 import shutil
 
 app = Flask(__name__)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SECRET_KEY = "xlsm-secret"
 
-PROGRAM_CONFIGS = {
-    "xlsm_tool": {
-        "pending_file": os.path.join(BASE_DIR, "pending_ids_xlsm_tool.json"),
-        "allowed_file": os.path.join(BASE_DIR, "allowed_ids_xlsm_tool.json"),
-        "template_file": os.path.join(BASE_DIR, "template.xlsm"),
-    }
-}
+PROGRAM_ID = "xlsm_tool"
+PENDING_FILE = "pending_ids_xlsm_tool.json"
+ALLOWED_FILE = "allowed_ids_xlsm_tool.json"
+TEMPLATE_FILE = "template.xlsm"
 
-def load_json(path):
-    if not os.path.exists(path):
+def read_json(filename):
+    if not os.path.exists(filename):
         return {}
-    with open(path, "r") as f:
+    with open(filename, "r") as f:
         try:
             return json.load(f)
         except json.JSONDecodeError:
             return {}
 
-def save_json(path, data):
-    with open(path, "w") as f:
+def write_json(filename, data):
+    with open(filename, "w") as f:
         json.dump(data, f, indent=2)
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    data = request.json
+    data = request.get_json(force=True)
     machine_id = data.get("machine_id")
     program_id = data.get("program_id")
-    duration = data.get("duration")
+    duration = data.get("duration", "lifetime")
 
-    if not all([machine_id, program_id]):
-        return "Missing required fields", 400
+    if program_id != PROGRAM_ID:
+        return jsonify({"error": "Invalid program ID"}), 400
 
-    config = PROGRAM_CONFIGS.get(program_id)
-    if not config:
-        return "Invalid program_id", 400
+    allowed = read_json(ALLOWED_FILE)
+    pending = read_json(PENDING_FILE)
 
-    pending = load_json(config["pending_file"])
-    allowed = load_json(config["allowed_file"])
-
+    # If machine ID is approved, return the file
     if machine_id in allowed:
-        # Only for xlsm_tool, return .xlsm file
-        if program_id == "xlsm_tool":
-            template = config["template_file"]
-            output = os.path.join(BASE_DIR, f"QTY_Network_2025_{machine_id}.xlsm")
-            if not os.path.exists(template):
-                return "Template file not found", 500
-            shutil.copy(template, output)
-            return send_file(output, as_attachment=True)
+        output_filename = f"QTY_Network_2025_{machine_id}.xlsm"
+        shutil.copy(TEMPLATE_FILE, output_filename)
+        return send_file(output_filename, as_attachment=True)
 
-        # If other program, return JSON payload
-        expiry = None
-        if duration:
-            expiry = (datetime.utcnow() + timedelta(hours=int(duration))).isoformat()
-        payload = {
-            "machine_id": machine_id,
-            "program_id": program_id,
-            "expiry": expiry
-        }
-        signature = hmac.new(SECRET_KEY.encode(), json.dumps(payload).encode(), hashlib.sha256).hexdigest()
-        payload["signature"] = signature
-        return jsonify(payload)
+    # If new request, store in pending list
+    if machine_id not in pending:
+        pending[machine_id] = {"program_id": program_id, "duration": duration}
+        write_json(PENDING_FILE, pending)
 
-    # Not approved, save to pending
-    pending[machine_id] = {"program_id": program_id, "duration": duration}
-    save_json(config["pending_file"], pending)
-    return "Request submitted and pending approval.", 202
+    return jsonify({"status": "pending", "message": "Request submitted."}), 202
 
-@app.route("/admin/<program_id>", methods=["GET", "POST"])
-def admin_panel(program_id):
-    config = PROGRAM_CONFIGS.get(program_id)
-    if not config:
-        return "Invalid program_id", 404
-
-    pending = load_json(config["pending_file"])
-    allowed = load_json(config["allowed_file"])
-
+@app.route("/admin", methods=["GET", "POST"])
+def admin():
     if request.method == "POST":
         action = request.form.get("action")
         machine_id = request.form.get("machine_id")
+
+        pending = read_json(PENDING_FILE)
+        allowed = read_json(ALLOWED_FILE)
+
         if action == "approve" and machine_id in pending:
             allowed[machine_id] = pending.pop(machine_id)
-            save_json(config["allowed_file"], allowed)
-            save_json(config["pending_file"], pending)
+            write_json(ALLOWED_FILE, allowed)
+            write_json(PENDING_FILE, pending)
         elif action == "reject" and machine_id in pending:
             pending.pop(machine_id)
-            save_json(config["pending_file"], pending)
+            write_json(PENDING_FILE, pending)
+
+    pending = read_json(PENDING_FILE)
+    allowed = read_json(ALLOWED_FILE)
 
     html = """
-    <h1>{{ program_id }} License Admin</h1>
-    <h2>Pending Requests</h2>
+    <h1>Xlsm Tool License Requests</h1>
+    <h2>Pending</h2>
     {% if pending %}
         <ul>
         {% for machine_id in pending %}
@@ -116,10 +90,10 @@ def admin_panel(program_id):
         <p>No pending requests.</p>
     {% endif %}
 
-    <h2>Approved Machines</h2>
-    {% if allowed %}
+    <h2>Approved</h2>
+    {% if approved %}
         <ul>
-        {% for machine_id in allowed %}
+        {% for machine_id in approved %}
             <li>{{ machine_id }}</li>
         {% endfor %}
         </ul>
@@ -127,7 +101,7 @@ def admin_panel(program_id):
         <p>No approved machines.</p>
     {% endif %}
     """
-    return render_template_string(html, program_id=program_id, pending=pending, allowed=allowed)
+    return render_template_string(html, pending=read_json(PENDING_FILE), approved=read_json(ALLOWED_FILE))
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    app.run(host="0.0.0.0", port=10000)
